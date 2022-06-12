@@ -3,6 +3,8 @@
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.engine import Engine
+from sqlalchemy import event, exc
 
 app = Flask(__name__)
 app.secret_key = "secret_key"
@@ -14,26 +16,21 @@ db = SQLAlchemy(app)
 
 
 class InventoryItem(db.Model):
+    """ORM for Inventory Items.
+    """
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
-    
     warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouse.id'), nullable=True)
-    warehouse = db.relationship('Warehouse', back_populates='inventory_items')
-
-    def __init__(self, name, quantity):
-        self.name = name
-        self.quantity = quantity
 
 
 class Warehouse(db.Model):
+    """ORM for Warehouses.  One-to-many with Inventory Items.
+    """
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
 
-    inventory_items = db.relationship('InventoryItem', back_populates='warehouse')
-
-    def __init__(self, name):
-        self.name = name
+    inventory_items = db.relationship('InventoryItem', backref='warehouse')
 
 
 @app.route('/')
@@ -48,13 +45,17 @@ def insert_item():
     if request.method == 'POST':
         name = request.form['name']
         quantity = request.form['quantity']
+        warehouse_id = request.form['warehouse_id'] or None
 
-        data = InventoryItem(name, quantity)
-        db.session.add(data)
-        db.session.commit()
-
-        flash("Inserted Inventory Item Successfully")
-        return redirect(url_for('Index'))  # redirect user back to index
+        data = InventoryItem(name=name, quantity=quantity, warehouse_id=warehouse_id)
+        try:
+            db.session.add(data)
+            db.session.commit()
+            flash("Inserted Inventory Item Successfully", 'success')
+        except exc.IntegrityError:
+            flash("Failed to Insert Inventory Item.  Invalid Warehouse ID", 'danger')
+        finally:
+            return redirect(url_for('Index')) 
 
 
 @app.route('/update_item', methods=['GET', 'POST'])
@@ -63,11 +64,15 @@ def update_item():
         data = InventoryItem.query.get(request.form.get('id'))  # the hidden ID from the form
         data.name = request.form['name']
         data.quantity = request.form['quantity']
+        data.warehouse_id = request.form['warehouse_id']
 
-        db.session.commit()
-
-        flash("Updated Inventory Item Successfully")
-        return redirect(url_for('Index'))
+        try:
+            db.session.commit()
+            flash("Updated Inventory Item Successfully", 'success')
+        except exc.IntegrityError as e:
+            flash("Failed to Update Inventory Item", 'danger')  # due to DB API conflict (e.g. foreign key constraint)
+        finally:
+            return redirect(url_for('Index')) 
 
 
 @app.route('/delete_item/<id>/', methods=['GET', 'POST'])
@@ -77,7 +82,7 @@ def delete_item(id):
     db.session.delete(data)
     db.session.commit()
 
-    flash("Deleted Inventory Item Successfully")
+    flash("Deleted Inventory Item Successfully", 'success')
     return redirect(url_for('Index'))
 
 
@@ -86,13 +91,13 @@ def insert_warehouse():
     if request.method == 'POST':
         name = request.form['name']
 
-        data = Warehouse(name)
+        data = Warehouse(name=name)
         db.session.add(data)
         db.session.commit()
 
-        flash("Inserted Warehouse Successfully")
+        flash("Inserted Warehouse Successfully", 'success')
 
-        return redirect(url_for('Index'))  # redirect user back to index
+        return redirect(url_for('Index'))
 
 
 @app.route('/update_warehouse', methods=['GET', 'POST'])
@@ -102,7 +107,7 @@ def update_warehouse():
         data.name = request.form['name']
 
         db.session.commit()
-        flash("Updated Warehouse Successfully")
+        flash("Updated Warehouse Successfully", 'success')
         return redirect(url_for('Index'))
 
 
@@ -111,8 +116,19 @@ def delete_warehouse(id):
     data = Warehouse.query.get(id)
     db.session.delete(data)
     db.session.commit()
-    flash("Deleted Warehouse Successfully")
+    flash("Deleted Warehouse Successfully", 'success')
     return redirect(url_for('Index'))
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Change the foreign keys setting for SQLite to enforce foreign key constraints.
+    
+    By default, foreign keys SQLite do not affect the operation of the tables.
+    """
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 if __name__ == "__main__":
