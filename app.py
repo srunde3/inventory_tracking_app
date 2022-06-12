@@ -53,7 +53,7 @@ def insert_item():
             db.session.commit()
             flash("Inserted Inventory Item Successfully", 'success')
         except exc.IntegrityError:
-            flash("Failed to Insert Inventory Item.  Invalid Warehouse ID", 'danger')
+            flash("Failed to Insert Inventory Item", 'danger')  # generic error for DB API errors (e.g. foreign key constraint)
         finally:
             return redirect(url_for('Index')) 
 
@@ -70,7 +70,7 @@ def update_item():
             db.session.commit()
             flash("Updated Inventory Item Successfully", 'success')
         except exc.IntegrityError as e:
-            flash("Failed to Update Inventory Item", 'danger')  # due to DB API conflict (e.g. foreign key constraint)
+            flash("Failed to Update Inventory Item", 'danger')  # generic error for DB API errors (e.g. foreign key constraint)
         finally:
             return redirect(url_for('Index')) 
 
