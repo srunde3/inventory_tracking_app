@@ -134,4 +134,4 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 if __name__ == "__main__":
     db.drop_all()  # clear db tables for development purposes
     db.create_all()  # create database tables
-    app.run(debug=True)
+    app.run(host="0.0.0.0")
